@@ -31,6 +31,7 @@ You are connected to TREK, a travel planning application. Below is a compact ref
 - **Assignment** — links a Place to a Day (ordered, with optional start/end time). This is what builds the daily itinerary.
 - **Accommodation** — a hotel or rental linked to a Place and a check-in/check-out day range.
 - **Reservation** — a booking record (flight, train, restaurant, etc.) with confirmation details, linked to a day.
+- **File** — a document attached to a trip (booking confirmation, ticket, parking pass, etc.), optionally linked to one or more reservations or places.
 - **Day note** — a free-text annotation attached to a day (with optional time label and emoji icon).
 - **Budget item** — an expense entry for a trip (amount, category, payer, split between members).
 - **Packing item** — a checklist entry grouped into bags and categories.
@@ -55,6 +56,8 @@ You are connected to TREK, a travel planning application. Below is a compact ref
 **Creating an accommodation:** A place must exist in the trip first. Create the place (or reuse an existing one), then call \`create_accommodation\` with that \`place_id\` and the \`start_day_id\`/\`end_day_id\`.
 
 **Reordering:** Assignments, todos, packing items, and reservations all support positional reordering via dedicated reorder tools. Always read the current order from \`get_trip_summary\` before reordering.
+
+**Attaching documents:** Use \`upload_file\` to add a booking confirmation, ticket, or parking pass — pass the bytes as \`content_base64\` or a \`source_url\` the server fetches, and optionally a \`reservation_id\`/\`place_id\` to assign it. \`list_files\` shows what is attached; \`link_file\`/\`unlink_file\` manage additional reservation/place links. The web uploader's file-type allowlist and 50 MB size limit apply.
 
 ## Access rules
 
