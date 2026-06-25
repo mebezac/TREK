@@ -35,6 +35,26 @@ export const reservationEndpointSchema = z.object({
 export type ReservationEndpoint = z.infer<typeof reservationEndpointSchema>;
 
 /**
+ * One segment of a multi-leg (layover) flight. The per-leg detail (airline,
+ * flight number, each segment's own day/time) is stored in `metadata.legs`,
+ * while geometry/order lives in reservation_endpoints. Single source of truth
+ * for the leg contract documented in client/src/utils/flightLegs.ts — reused by
+ * the MCP transport tools so server and client agree on the shape.
+ */
+export const flightLegSchema = z.object({
+  from: z.string().min(1).describe('Origin IATA airport code for this segment, e.g. "FRA"'),
+  to: z.string().min(1).describe('Destination IATA airport code for this segment, e.g. "BER"'),
+  airline: z.string().optional(),
+  flight_number: z.string().optional(),
+  dep_day_id: z.number().int().positive().nullable().optional().describe('Trip day this segment departs on'),
+  dep_time: z.string().nullable().optional().describe('Local departure time, "HH:mm"'),
+  arr_day_id: z.number().int().positive().nullable().optional().describe('Trip day this segment arrives on'),
+  arr_time: z.string().nullable().optional().describe('Local arrival time, "HH:mm"'),
+  day_positions: z.record(z.string(), z.number()).optional(),
+});
+export type FlightLeg = z.infer<typeof flightLegSchema>;
+
+/**
  * Reservation entity as returned by the reservation list endpoint
  * (server/src/services/reservationService.ts -> listReservations). Columns of
  * the `reservations` table plus the joined day_number / place_name / linked

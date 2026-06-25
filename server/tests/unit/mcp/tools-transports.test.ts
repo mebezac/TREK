@@ -199,3 +199,93 @@ describe('Tool: update_transport', () => {
     });
   });
 });
+
+describe('Multi-leg flights (legs[])', () => {
+  // Two-leg layover FRA -> BER -> HND. Each leg carries its own time + carrier.
+  const legs = [
+    { from: 'FRA', to: 'BER', airline: 'Lufthansa', flight_number: 'LH1', dep_time: '08:00', arr_time: '09:00' },
+    { from: 'BER', to: 'HND', airline: 'ANA', flight_number: 'NH2', dep_time: '10:00', arr_time: '20:00' },
+  ];
+
+  it('derives N+1 endpoints with per-leg times from N legs', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const data = parseToolResult(await h.client.callTool({
+        name: 'create_transport',
+        arguments: { tripId: trip.id, type: 'flight', title: 'FRA → HND', legs },
+      })) as any;
+      const eps = data.reservation.endpoints.sort((a: any, b: any) => a.sequence - b.sequence);
+      expect(eps.map((e: any) => e.code)).toEqual(['FRA', 'BER', 'HND']);
+      expect(eps.map((e: any) => e.role)).toEqual(['from', 'stop', 'to']);
+      // from departs leg0, the stop departs leg1, the destination arrives leg1
+      expect(eps[0].local_time).toBe('08:00');
+      expect(eps[1].local_time).toBe('10:00');
+      expect(eps[2].local_time).toBe('20:00');
+      // code-only legs are backfilled with airport coords (NOT NULL columns)
+      expect(eps.every((e: any) => typeof e.lat === 'number' && typeof e.lng === 'number')).toBe(true);
+    });
+  });
+
+  it('stores metadata.legs intact and mirrors first/last leg to top-level metadata', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const data = parseToolResult(await h.client.callTool({
+        name: 'create_transport',
+        arguments: { tripId: trip.id, type: 'flight', title: 'FRA → HND', legs },
+      })) as any;
+      const meta = JSON.parse(data.reservation.metadata);
+      expect(meta.legs).toHaveLength(2);
+      expect(meta.legs[0]).toMatchObject({ from: 'FRA', to: 'BER', airline: 'Lufthansa', flight_number: 'LH1' });
+      expect(meta.departure_airport).toBe('FRA');
+      expect(meta.arrival_airport).toBe('HND');
+      expect(meta.airline).toBe('Lufthansa');
+      expect(meta.flight_number).toBe('LH1');
+    });
+  });
+
+  it('errors on an unresolvable airport code in a leg', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_transport',
+        arguments: { tripId: trip.id, type: 'flight', title: 'Bad', legs: [{ from: 'ZZZ', to: 'CDG' }] },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content as any)[0].text).toContain('ZZZ');
+    });
+  });
+
+  it('rejects legs on a non-flight transport type', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_transport',
+        arguments: { tripId: trip.id, type: 'train', title: 'Nope', legs: [{ from: 'FRA', to: 'BER' }] },
+      });
+      expect(result.isError).toBe(true);
+      expect((result.content as any)[0].text).toContain('flight');
+    });
+  });
+
+  it('update_transport replaces endpoints + legs from a new legs[] array', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    await withHarness(user.id, async (h) => {
+      const created = parseToolResult(await h.client.callTool({
+        name: 'create_transport',
+        arguments: { tripId: trip.id, type: 'flight', title: 'F', endpoints: flightEndpoints },
+      })) as any;
+      const data = parseToolResult(await h.client.callTool({
+        name: 'update_transport',
+        arguments: { tripId: trip.id, reservationId: created.reservation.id, legs },
+      })) as any;
+      expect(data.reservation.endpoints).toHaveLength(3);
+      const meta = JSON.parse(data.reservation.metadata);
+      expect(meta.legs).toHaveLength(2);
+    });
+  });
+});
